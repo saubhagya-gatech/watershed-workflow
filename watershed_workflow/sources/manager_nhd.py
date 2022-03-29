@@ -113,9 +113,9 @@ class _FileManagerNHD:
             profile = fid.profile
         profile['always_xy'] = True
         return profile, hus
-        
-    def get_hydro(self, huc, bounds=None, bounds_crs=None, in_network=True,
-                  include_catchments=False, force_download=False):
+        #include_catchments=False, include_catchment_areas=False,
+    def get_hydro(self, huc, bounds=None, bounds_crs=None, in_network=True, properties=None,
+                  force_download=False):
         """Get all reaches within a given HUC and/or coordinate bounds.
 
         Parameters
@@ -129,11 +129,10 @@ class _FileManagerNHD:
           CRS of the above bounds.
         in_network : bool, optional
           If True (default), remove reaches that are not "in" the NHD network
-        include_catchments : bool, optional
-          If True (default is False) and data source is NHDPlus, attach the 
-          reach catchment as a property to every reach.
+        properties : a list of properties to be added to reaches 'catchment' for catchment geometry, and property alias names for NHDPlusFlowlineVAA and NHDPlusEROMMA table 
+          (Table 16 and 17 NHDPlus user guide)
         force_download : bool
-          Download or re-download the file if true.
+        Download or re-download the file if true.
 
         Returns
         -------
@@ -143,7 +142,8 @@ class _FileManagerNHD:
           List of fiona shape objects representing the stream reaches.
 
         Note this finds and downloads files as needed.
-        """        
+        """  
+        
         if 'WBD' in self.name:
             raise RuntimeError('{}: does not provide hydrographic data.'.format(self.name))
         
@@ -177,34 +177,62 @@ class _FileManagerNHD:
         # filter not in network
         if in_network:
             logging.info("  Filtering reaches not in-network".format(self.name, filename, layer, bounds))
-            reaches = [r for r in reaches if 'InNetwork' not in r['properties'] or r['properties']['InNetwork'] == 1]
-            
+            reaches = [r for r in reaches if 'InNetwork' in r['properties'] and r['properties']['InNetwork'] == 1]
+
         # associate catchment areas with the reaches if NHDPlus
-        if 'Plus' in self.name and include_catchments:
-            layer = 'NHDPlusCatchment'
-            logging.info("  {}: opening '{}' layer '{}' for catchment areas in '{}'".format(self.name, filename, layer, bounds))
-            with fiona.open(filename, mode='r', layer=layer) as fid:
-                bounded_catchments = list(fid.items())#.items(bbox=bounds))
+        if 'Plus' in self.name and properties != None:
+            reach_dict = dict((r['properties']['NHDPlusID'],r) for r in reaches)
 
-            missing_catchments = 0
-            for i, reach in enumerate(reaches):
-                try:
-                    catch = next(c for (i,c) in bounded_catchments if c['properties']['NHDPlusID'] == reach['properties']['NHDPlusID'])
-                except StopIteration:
-                    logging.debug(f"reach missing catchment: {reach['properties']['NHDPlusID']}")
-
-                    if missing_catchments == i and missing_catchments > 10:
-                        # give up fairly quickly, as this can be slow
-                        break 
-                    missing_catchments += 1
-                    reach['properties']['catchment'] = None
-                else:
-                    reach['properties']['catchment'] = catch
-        
-
-
-        return profile, reaches
+            # these dictionaries are needed to access properties from NHDPLus tables {'property alias name': 'property key/code'} 
+            # Want to support more properties?? Add their alias names and codes in respective dictionaries (Table 16 and 17 NHDPlus user guide)
+            layer_vaa = dict({'StreamOrder':'StreamOrde' ,'StreamLevel':'StreamLeve' ,'HydrologicSequence': 'HydroSeq','DivergenceCode':'Divergence' , 'CatchmentAreaSqKm':'AreaSqKm' , 'TotalDrainageAreaSqKm':'TotDASqKm' })
+            layer_erroma = dict({'MeanAnnualFlow':'QAMA' ,'MeanAnnualVelocity':'VAMA' ,'MeanAnnualFlowGaugeAdj': 'QEMA'})
             
+            # validation of properties
+            valid_props=list(layer_vaa.keys())+list(layer_erroma.keys())+['catchments']
+            for prop in properties:
+                assert(prop in valid_props)
+
+            # flags for which layers will be needed
+            layer_flags=dict({'catchments': 'catchments' in properties ,'vaa': not set(properties).isdisjoint(list(layer_vaa.keys())),'erroma':not set(properties).isdisjoint(list(layer_erroma.keys()))})        
+            
+            if layer_flags['catchments']:
+                layer = 'NHDPlusCatchment'
+                logging.info("  {}: opening '{}' layer '{}' for catchments in '{}'".format(self.name, filename, layer, bounds))
+                for r in reaches:
+                    r['properties']['catchment'] = None
+                with fiona.open(filename, mode='r', layer=layer) as fid:
+                    for catchment in fid.values():
+                        reach = reach_dict.get(catchment['properties']['NHDPlusID'])                      
+                        if reach is not None:
+                            reach['properties']['catchment'] = catchment
+
+            if layer_flags['vaa']:
+                layer = 'NHDPlusFlowlineVAA'
+                logging.info("  {}: opening '{}' layer '{}' for river network properties in '{}'".format(self.name, filename, layer, bounds))
+                with fiona.open(filename, mode='r', layer=layer) as fid:
+                    for flowline in fid.values():
+                        reach = reach_dict.get(flowline['properties']['NHDPlusID'])
+                        if reach is not None:
+                            for prop in properties:
+                                if prop in list(layer_vaa.keys()):
+                                    prop_code=layer_vaa[prop]
+                                    reach['properties'][prop] = flowline['properties'][prop_code]
+
+            if layer_flags['erroma']:
+                layer = 'NHDPlusEROMMA'
+                logging.info("  {}: opening '{}' layer '{}' for river network properties in '{}'".format(self.name, filename, layer, bounds))
+                with fiona.open(filename, mode='r', layer=layer) as fid:
+                    for flowline in fid.values():
+                        reach = reach_dict.get(flowline['properties']['NHDPlusID'])
+                        if reach is not None:
+                            for prop in properties:
+                                if prop in list(layer_erroma.keys()):
+                                    prop_code=layer_erroma[prop]
+                                    reach['properties'][prop] = flowline['properties'][prop_code]
+          
+        return profile, reaches
+
     def _url(self, hucstr):
         """Use the USGS REST API to find the URL to download a file for a given huc.
 
@@ -310,7 +338,7 @@ class _FileManagerNHD:
             ok = "title" in match
             logging.debug(f'title in match? {ok}')
         if ok:
-            for abbrev in ['NHD', 'NHDPlus', 'WBD']:
+            for abbrev in ['NHD', 'NHDPlus', 'NHDPlus HR', 'WBD']:
                 my_abbrev = f'({abbrev})'.lower()
                 if my_abbrev in self.name.lower():
                     break
