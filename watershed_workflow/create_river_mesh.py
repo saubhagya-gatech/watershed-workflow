@@ -350,6 +350,19 @@ def set_width_by_order(river, corr, widths=None):
                 [p1_, p2_]= move_to_target_separation(p1, p2, target_width)
                 corr_coords[elem[1]]=tuple(p1_)
                 corr_coords[elem[3]]=tuple(p2_)
+
+            if len(elem)==6:
+                p1=np.array(corr_coords[elem[2]][:2]) # neck of the hex
+                p2=np.array(corr_coords[elem[3]][:2])
+                [p1_, p2_]= move_to_target_separation(p1, p2, target_width)
+                corr_coords[elem[2]]=tuple(p1_)
+                corr_coords[elem[3]]=tuple(p2_)
+
+                p1=np.array(corr_coords[elem[1]][:2]) # neck of the hex
+                p2=np.array(corr_coords[elem[4]][:2])
+                [p1_, p2_]= move_to_target_separation(p1, p2, target_width)
+                corr_coords[elem[1]]=tuple(p1_)
+                corr_coords[elem[4]]=tuple(p2_)
                 
             if i==0: # this is to treat the most downstream edge which is left out so far
                 p1=np.array(corr_coords[elem[0]][:2]) # points of the upstream edge of the quad/pent
