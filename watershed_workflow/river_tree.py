@@ -136,16 +136,24 @@ class River(watershed_workflow.tinytree.Tree):
         """
         catchments = []
         for i, outlet_NHDPlusID in enumerate(outlet_NHDPlusIDs):
-            node_ob = next(node for node in self.preOrder()
-                           if node.properties['NHDPlusID'] == outlet_NHDPlusID)
-            catch = shapely.geometry.Polygon(
-                shapely.ops.unary_union(
-                    [node.properties['catchment'] for node in node_ob.preOrder()]).exterior)
-            catch.properties = dict()
-            catch.properties['outlet_NHDPlusID'] = outlet_NHDPlusID
-            catch.properties['name'] = names[i]
-            catch.properties['outlet_point'] = node_ob.segment.coords[-1]
-            catchments.append(catch)
+            try:
+                node_ob = next(node for node in self.preOrder()
+                            if node.properties['NHDPlusID'] == outlet_NHDPlusID)
+                polys_and_holes = shapely.ops.unary_union(
+                        [node.properties['catchment'].buffer(1e-6) for node in node_ob.preOrder() if node.properties['catchment']!=None])
+                # if isinstance(polys_and_holes, shapely.geometry.MultiPolygon):
+                #     polys_and_holes = list(polys_and_holes)[np.argmax([poly.area for poly in polys_and_holes])]
+
+                #catch = shapely.geometry.Polygon(polys_and_holes.exterior)
+                catch = polys_and_holes
+                catch.properties = dict()
+                catch.properties['outlet_NHDPlusID'] = outlet_NHDPlusID
+                catch.properties['name'] = names[i]
+                catch.properties['outlet_point'] = node_ob.segment.coords[-1]
+                catchments.append(catch)
+            except StopIteration:
+                pass
+                               
         return catchments
 
     def depthFirst(self):
