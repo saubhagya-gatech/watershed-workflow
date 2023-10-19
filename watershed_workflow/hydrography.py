@@ -726,16 +726,19 @@ def merge(river, tol=_tol):
     This function merges the "short" segment into the parent segment
 
     """
+    print(tol)
     for node in list(river.preOrder()):
         if node.segment.length < tol and node.parent is not None:
-            logging.info("  ...cleaned inner segment of length %g at centroid %r" %
-                         (node.segment.length, node.segment.centroid.coords[0]))
+            logging.info("  ...cleaned inner segment of length %g at centroid %r with id %r" %
+                         (node.segment.length, node.segment.centroid.coords[0], node.properties['ID']))
 
             for sibling in node.siblings():
                 sibling.moveCoordinate(-1, node.segment.coords[0])
                 sibling.remove()
                 node.addChild(sibling)
+            # print(node.properties['ID'])
 
+            assert (len(list(node.siblings())) == 0)
             node.merge()
 
 

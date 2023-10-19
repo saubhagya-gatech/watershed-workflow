@@ -1159,6 +1159,8 @@ def triangulate(hucs,
                 rivers=None,
                 river_corrs=None,
                 internal_boundaries=None,
+                hole_points=None,
+                refinement_polygons = None,
                 diagnostics=True,
                 verbosity=1,
                 tol=1,
@@ -1266,9 +1268,9 @@ def triangulate(hucs,
 
     vertices, triangles = watershed_workflow.triangulation.triangulate(
         hucs,
-        rivers,
         river_corrs,
         internal_boundaries=internal_boundaries,
+        hole_points = hole_points,
         tol=tol,
         verbose=verbose,
         refinement_func=my_refine_func,
@@ -1337,6 +1339,8 @@ def tessalate_river_aligned(hucs,
                             river_width,
                             river_n_quads=1,
                             internal_boundaries=None,
+                            hole_points=None,
+                            refinement_polygons=None,
                             diagnostics=False,
                             ax=None,
                             **kwargs):
@@ -1398,8 +1402,8 @@ def tessalate_river_aligned(hucs,
                                                                   ax=ax)
 
     # triangulate the rest
-    tri_res = watershed_workflow.triangulate(hucs_without_outlet, rivers, corrs,
-                                             internal_boundaries, diagnostics, **kwargs)
+    tri_res = watershed_workflow.triangulate(hucs_without_outlet, rivers, corrs, 
+                                             internal_boundaries, hole_points, refinement_polygons, diagnostics, **kwargs)
     tri_verts = tri_res[0]
     tri_conn = tri_res[1]
 
